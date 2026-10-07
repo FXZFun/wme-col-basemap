@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Garmin Sleep Share
 // @namespace    https://fxzfun.com/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Share your sleep score as a single photo instead of multiple screenshots of the app
 // @author       FXZFun, Dubster
 // @match        https://connect.garmin.com/*
@@ -203,7 +203,7 @@
    const elementSelectors = {
       score: ".SleepScoreSummary_dailySleepScoreValue__GK7Te",
       scoreTitle: ".SleepPage_sleepScoreTabContainer__GseoL h4",
-      sleepMetrics: ".SleepStats_sleepStatsContainer__qHHZ3 .DataBlock_dataField__t4-ai",
+      sleepMetrics: ".SleepStats_sleepStatsContainer__qHHZ3 .DataBlock_dataField__EfjQl",
       scoreFactors: ".SleepScoreFactorCard_sleepTypeValues__1jbrw",
       message: ".SleepScoreSummary_shortFeedbackTitle__\\+S5P1",
       graph: ".highcharts-root",
