@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME COL Basemap
 // @namespace    https://fxzfun.com/
-// @version      4.0.5
+// @version      4.0.6-beta-00
 // @description  Adds aerials from the COL GIS as a basemap for WME
 // @author       FXZFun
 // @include      https://beta.waze.com/*
@@ -83,7 +83,7 @@
         async initAsync(sdk) {
             const ticket = await API.getTicketAsync();
 
-            sdk.Map.addTileLayer({
+            await sdk.Map.addTileLayer({
                 layerName: SCRIPT_ID,
                 layerOptions: {
                     tileWidth: 256,
@@ -96,23 +96,24 @@
                 }
             });
 
-            sdk.Map.setLayerVisibility({ layerName: SCRIPT_ID, visibility: State.enabled });
-            this.setZIndex(sdk);
+            await sdk.Map.setLayerVisibility({ layerName: SCRIPT_ID, visibility: State.enabled });
+            await this.setZIndex(sdk);
         },
 
         async setDateAsync(sdk, date) {
             State.date = date;
 
-            sdk.Map.removeLayer({ layerName: SCRIPT_ID });
+            await sdk.Map.removeLayer({ layerName: SCRIPT_ID });
 
             await this.initAsync(sdk);
 
-            UI.syncAll(sdk);
+            await UI.syncAll(sdk);
         },
 
-        setZIndex(sdk) {
+        async setZIndex(sdk) {
             if (State.enabled) {
-                sdk.Map.setLayerZIndex({ layerName: SCRIPT_ID, zIndex: sdk.Map.getLayerZIndex({ layerName: 'satellite_pleiades_ortho_rgb' }) + 1 });
+                const zIndex = await sdk.Map.getLayerZIndex({ layerName: 'satellite_pleiades_ortho_rgb' });
+                await sdk.Map.setLayerZIndex({ layerName: SCRIPT_ID, zIndex: zIndex + 1 });
             }
         },
 
@@ -120,9 +121,9 @@
             if (API.shouldRefresh()) await API.refreshAsync();
 
             State.enabled = !State.enabled;
-            State.enabled ? await this.initAsync(sdk) : sdk.Map.removeLayer({ layerName: SCRIPT_ID });
+            State.enabled ? await this.initAsync(sdk) : await sdk.Map.removeLayer({ layerName: SCRIPT_ID });
 
-            UI.syncAll(sdk);
+            await UI.syncAll(sdk);
         },
 
         async enableAsync(sdk) {
@@ -170,7 +171,7 @@
             select.value = State.date;
         },
 
-        syncAll(sdk) {
+        async syncAll(sdk) {
             // Power icons
             document.querySelectorAll('.col-power').forEach(el => { el.style.color = State.enabled ? '#00bd00' : '#bdbdbd'; });
 
@@ -179,7 +180,7 @@
                 if (el.value !== State.date) el.value = State.date;
             });
 
-            sdk.LayerSwitcher.setLayerCheckboxChecked({ isChecked: State.enabled, name: SCRIPT_NAME });
+            await sdk.LayerSwitcher.setLayerCheckboxChecked({ isChecked: State.enabled, name: SCRIPT_NAME });
         },
 
         createBubble(sdk) {
@@ -253,10 +254,10 @@
             document.querySelector('#map').appendChild(el);
         },
 
-        updateBubble(sdk) {
+        async updateBubble(sdk) {
             document.getElementById('colBubble')?.remove();
             this.createBubble(sdk);
-            this.syncAll(sdk);
+            await this.syncAll(sdk);
         },
 
         async initSidebarAsync(sdk) {
@@ -307,9 +308,9 @@
                 s.addEventListener('change', async e => await Layer.setDateAsync(sdk, e.target.value));
             });
 
-            root.querySelector('#colBubbleToggle').onchange = e => {
+            root.querySelector('#colBubbleToggle').onchange = async e => {
                 State.bubbleVisible = e.target.checked;
-                this.updateBubble(sdk);
+                await this.updateBubble(sdk);
                 saveState();
             };
 
@@ -317,20 +318,20 @@
                 await API.refreshAsync();
                 root.querySelectorAll('.col-date-select').forEach(s => this.populateDates(s));
                 await Layer.setDateAsync(sdk, State.date);
-                this.syncAll(sdk);
+                await this.syncAll(sdk);
             };
         },
 
-        addShortcut(sdk) {
+        async addShortcut(sdk) {
             const savedKeys = State.shortcut;
 
             if (savedKeys) {
                 try {
-                    sdk.Shortcuts.deleteShortcut({ shortcutId: SCRIPT_ID });
+                    await sdk.Shortcuts.deleteShortcut({ shortcutId: SCRIPT_ID });
                 } catch (e) { }
             }
 
-            sdk.Shortcuts.createShortcut({
+            await sdk.Shortcuts.createShortcut({
                 shortcutId: SCRIPT_ID,
                 description: 'Toggle COL Basemap layer',
                 shortcutKeys: savedKeys,
@@ -351,9 +352,8 @@
                         return modifiers ? `${modifiers}+${key}` : String(key);
                     };
 
-                    const shortcut = sdk.Shortcuts
-                    .getAllShortcuts()
-                    .find(s => s.shortcutId === SCRIPT_ID);
+                    const shortcuts = await sdk.Shortcuts.getAllShortcuts();
+                    const shortcut = shortcuts.find(s => s.shortcutId === SCRIPT_ID);
 
                     if (shortcut?.shortcutKeys) {
                         State.shortcut = convertShortcut(shortcut.shortcutKeys);
@@ -365,8 +365,8 @@
             });
         },
 
-        addLayerToggle(sdk) {
-            sdk.LayerSwitcher.addLayerCheckbox({ name: SCRIPT_NAME });
+        async addLayerToggle(sdk) {
+            await sdk.LayerSwitcher.addLayerCheckbox({ name: SCRIPT_NAME });
             sdk.Events.on({ eventName: 'wme-layer-checkbox-toggled', eventHandler: async () => await Layer.toggleAsync(sdk) });
         }
     };
@@ -374,9 +374,11 @@
     try {
         const context = 'unsafeWindow' in window ? window.unsafeWindow : window;
         await context.SDK_INITIALIZED;
-        const sdk = context.getWmeSdk({ scriptId: SCRIPT_ID, scriptName: SCRIPT_NAME });
+        const sdk = context.getWmeSdk({ scriptId: SCRIPT_ID, scriptName: SCRIPT_NAME, mode: 'async' });
 
-        await new Promise(res => sdk.State.isReady() ? res() : sdk.Events.once({ eventName: 'wme-ready' }).then(res));
+        if (!await sdk.State.isReady()) {
+            await sdk.Events.once({ eventName: 'wme-ready' });
+        }
         console.log(`${SCRIPT_NAME}: Initializing`);
 
         loadState();
@@ -386,14 +388,14 @@
 
         await UI.initSidebarAsync(sdk);
         UI.createBubble(sdk);
-        UI.addShortcut(sdk);
-        UI.addLayerToggle(sdk);
-        UI.syncAll(sdk);
+        await UI.addShortcut(sdk);
+        await UI.addLayerToggle(sdk);
+        await UI.syncAll(sdk);
 
         // TODO: Window resizes and panels opening trigger the map-move event, but not the move-end event, so disabling while moving doesn't work consistently
         // Layer.disableWhileMoving(sdk);
 
-        sdk.Events.on({ eventName: 'wme-map-layer-removed', eventHandler: () => Layer.setZIndex(sdk) });
+        sdk.Events.on({ eventName: 'wme-map-layer-removed', eventHandler: async () => await Layer.setZIndex(sdk) });
 
         console.log(`${SCRIPT_NAME}: Ready`);
     } catch (e) {
